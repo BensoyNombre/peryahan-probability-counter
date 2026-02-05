@@ -42,15 +42,22 @@ button.card.selected {
   transform: scale(1.05);
   transition: 0.1s;
 }
-#confirm {
-  display: none;
-  background: #03dac6;
-  color: black;
+#confirm, #cancel {
   padding: 12px 20px;
   font-size: 18px;
   border-radius: 12px;
   margin-top: 10px;
   box-shadow: 0 2px 5px #000;
+  display: none;
+}
+#confirm {
+  background: #03dac6;
+  color: black;
+  margin-right: 10px;
+}
+#cancel {
+  background: #cf6679;
+  color: white;
 }
 #reset {
   position: fixed;
@@ -106,7 +113,10 @@ small {
 <div id="throw-buttons">
   <p>Tap 3 cards for this throw (duplicates allowed):</p>
   <div id="card-buttons"></div>
-  <button id="confirm" onclick="confirmThrow()">Confirm Throw</button>
+  <div>
+    <button id="confirm" onclick="confirmThrow()">Confirm Throw</button>
+    <button id="cancel" onclick="cancelThrow()">Cancel</button>
+  </div>
 </div>
 
 <canvas id="pieChart"></canvas>
@@ -225,7 +235,10 @@ function addCard(index){
   btn.classList.add('selected');
   btn.innerText = cardCounts[index]>1?labels[index]+' x'+cardCounts[index]:labels[index];
   playSound('tapSound');
-  if(currentThrow.length===3) document.getElementById("confirm").style.display="inline-block";
+  if(currentThrow.length===3){
+    document.getElementById("confirm").style.display="inline-block";
+    document.getElementById("cancel").style.display="inline-block";
+  }
 }
 
 // Confirm throw
@@ -239,9 +252,22 @@ function confirmThrow(){
     b.innerText = labels[i];
   });
   document.getElementById("confirm").style.display="none";
+  document.getElementById("cancel").style.display="none";
   playSound('confirmSound');
   renderPie();
   showTop3Popup();
+}
+
+// Cancel throw
+function cancelThrow(){
+  currentThrow=[];
+  cardCounts=Array(6).fill(0);
+  document.querySelectorAll('button.card').forEach((b,i)=>{
+    b.classList.remove('selected');
+    b.innerText = labels[i];
+  });
+  document.getElementById("confirm").style.display="none";
+  document.getElementById("cancel").style.display="none";
 }
 
 // Reset history
