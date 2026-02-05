@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#bb86fc">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pocket Predictor ML</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+
+<style>
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #121212;
+  color: white;
+  text-align: center;
+}
+header {
+  padding: 15px;
+  font-size: 22px;
+  font-weight: bold;
+}
+button.card, #confirm, #reset {
+  padding: 12px 16px;
+  margin: 5px;
+  background: #1e1e1e;
+  color: white;
+  border: none;
+  font-size: 18px;
+  border-radius: 8px;
+}
+button.card.selected {
+  background: #bb86fc;
+  color: black;
+}
+#throw-buttons {
+  margin-top: 10px;
+  margin-bottom: 20px;
+}
+#confirm {
+  display: none;
+  background: #03dac6;
+  color: black;
+}
+#reset {
+  background: #cf6679;
+}
+canvas {
+  max-width: 95%;
+  margin: auto;
+  display: block;
+}
+small {
+  display: block;
+  margin-top: 5px;
+  opacity: 0.7;
+}
+#popup {
+  position: fixed;
+  top: 20%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #1e1e1e;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 0 15px #bb86fc;
+  display: none;
+  z-index: 999;
+}
+#popup h3 {
+  margin: 0 0 10px 0;
+}
+#popup button {
+  margin-top: 10px;
+  background: #bb86fc;
+  border-radius: 8px;
+}
+</style>
+</head>
+
+<body>
+<header>🎯 Pocket Predictor ML</header>
+
+<div id="throw-buttons">
+  <p>Tap 3 cards for this throw (duplicates allowed):</p>
+  <div id="card-buttons"></div>
+  <button id="confirm" onclick="confirmThrow()">Confirm Throw</button>
+  <button id="reset" onclick="resetHistory()">Reset History</button>
+</div>
+
+<canvas id="pieChart"></canvas>
+<small>Pie chart shows predicted probability per card</small>
+
+<div id="popup">
+  <h3>Top 3 Predicted Next Cards</h3>
+  <div id="top3"></div>
+  <button onclick="closePopup()">Close</button>
+</div>
+
+<script>
+const labels = ["9","10","Jack","Queen","King","Ace"];
+let history = JSON.parse(localStorage.getItem("history")) || [];
+let currentThrow = [];
+let cardCounts = Array(6).fill(0);
+
+// Calculate weighted frequency + sequence prediction
+function calculateScores() {
+  let scores = Array(6).fill(0);
+  
+  // Frequency weighting
+  history.forEach((throwArr, index) => {
+    throwArr.forEach(card => {
+      // More recent throws get higher weight
+      let weight = 1 + index/10;
+      scores[card] += weight;
+    });
+  });
+
+  // Sequence-based ML prediction (simple Markov-style)
+  if(history.length > 0) {
+    let lastThrow = history[history.length-1].join(',');
+    history.forEach((throwArr, idx) => {
+      if(idx < history.length - 1) {
+        let seq = throwArr.join(',');
+        if(seq === lastThrow) {
+          // Next throw
+          history[idx+1].forEach(c => {
+            scores[c] += 2; // add extra weight for following sequence
+          });
+        }
+      }
+    });
+  }
+
+  return scores;
+}
+
+// Render Pie Chart
+function renderPie() {
+  const ctx = document.getElementById('pieChart').getContext('2d');
+  const scores = calculateScores();
+  if(window.pie) window.pie.destroy();
+  window.pie = new Chart(ctx, {
+    type: 'pie',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Predicted probability',
+        data: scores,
+        backgroundColor: ['#ff6384','#36a2eb','#ffcd56','#bb86fc','#03dac6','#cf6679']
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: 'bottom', labels: { color: 'white' } },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              let sum = context.dataset.data.reduce((a,b)=>a+b,0);
+              let val = context.raw;
+              let percent = ((val / sum) * 100).toFixed(1);
+              return `${context.label}: ${val.toFixed(1)} (${percent}%)`;
+            }
+          }
+        },
+        datalabels: {
+          color: 'white',
+          formatter: function(value, context) {
+            let sum = context.chart.data.datasets[0].data.reduce((a,b)=>a+b,0);
+            let percent = ((value / sum) * 100).toFixed(1);
+            return percent + '%';
+          },
+          font: { weight: 'bold', size: 14 }
+        }
+      }
+    },
+    plugins: [ChartDataLabels]
+  });
+}
+
+// Top 3 prediction popup
+function showTop3Popup() {
+  const scores = calculateScores();
+  let arr = scores.map((v,i)=>({card: labels[i], score: v}));
+  arr.sort((a,b)=>b.score-a.score);
+  let top3 = arr.slice(0,3);
+  const container = document.getElementById("top3");
+  container.innerHTML = top3.map(c => `<p>${c.card} (${c.score.toFixed(1)})</p>`).join('');
+  document.getElementById("popup").style.display = "block";
+}
+
+function closePopup() {
+  document.getElementById("popup").style.display = "none";
+}
+
+// Tap card input
+function addCard(index) {
+  if(currentThrow.length >= 3) return;
+  
+  currentThrow.push(index);
+  cardCounts[index]++;
+  
+  const btn = document.querySelectorAll('button.card')[index];
+  btn.classList.add('selected');
+  btn.innerText = cardCounts[index] > 1 ? labels[index] + ' x' + cardCounts[index] : labels[index];
+  
+  if(currentThrow.length === 3){
+    document.getElementById("confirm").style.display = "inline-block";
+  }
+}
+
+// Confirm throw
+function confirmThrow() {
+  history.push([...currentThrow]);
+  localStorage.setItem("history", JSON.stringify(history));
+  
+  currentThrow = [];
+  cardCounts = Array(6).fill(0);
+  
+  const btns = document.querySelectorAll('button.card');
+  btns.forEach((b,i)=>{
+    b.classList.remove('selected');
+    b.innerText = labels[i];
+  });
+  
+  document.getElementById("confirm").style.display = "none";
+  renderPie();
+  showTop3Popup();
+}
+
+// Reset history
+function resetHistory() {
+  if(confirm("Are you sure you want to reset history?")) {
+    history = [];
+    localStorage.setItem("history", JSON.stringify(history));
+    renderPie();
+  }
+}
+
+// Render card buttons
+function renderButtons() {
+  const container = document.getElementById('card-buttons');
+  container.innerHTML = '';
+  labels.forEach((lbl,i)=>{
+    const btn = document.createElement('button');
+    btn.innerText = lbl;
+    btn.className = 'card';
+    btn.onclick = ()=>addCard(i);
+    container.appendChild(btn);
+  });
+}
+
+renderButtons();
+renderPie();
+</script>
+</body>
+</html>
